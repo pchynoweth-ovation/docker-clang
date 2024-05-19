@@ -21,6 +21,14 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+    strategy:
+      matrix:
+        base-image: [ alpine, ubuntu ]
+        include:
+          - llvm-version: 18.1.5
+          - latest: false
+          - latest: true
+            base-image: alpine
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,11 +45,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ matrix.latest }}
+            type=raw,value=${{ format('{0}-{1}', matrix.llvm-version, matrix.base-image) }}
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       # This step uses the `docker/build-push-action` action to build the image, based on your repository's `Dockerfile`. If the build succeeds, it pushes the image to GitHub Packages.
       # It uses the `context` parameter to define the build's context as the set of files located in the specified path. For more information, see "[Usage](https://github.com/docker/build-push-action#usage)" in the README of the `docker/build-push-action` repository.
@@ -50,10 +55,12 @@ jobs:
         id: push
         uses: docker/build-push-action@v5
         with:
-          context: config/
+          context: ${{ matrix.base-image }}/
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            LLVM_VERSION=${{ matrix.llvm-version }}
       
       # This step generates an artifact attestation for the image, which is an unforgeable statement about where and how it was built. It increases supply chain security for people who consume the image. For more information, see "[AUTOTITLE](/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)." 
       - name: Generate artifact attestation
